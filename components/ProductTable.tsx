@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +11,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Pencil, ShoppingCart, Minus, Plus } from "lucide-react";
+import {
+  Pencil,
+  ShoppingCart,
+  Minus,
+  Plus,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 interface Product {
   _id: string;
@@ -26,31 +36,64 @@ interface ProductTableProps {
   onUpdate: () => void;
 }
 
+type SortKey = "productCode" | "productName" | "quantity";
+type SortDir = "asc" | "desc" | null;
+
+const PAGE_SIZE = 10;
+
 function StatusBadge({ quantity }: { quantity: number }) {
   if (quantity === 0)
     return (
-      <Badge className="bg-red-100 text-red-700 border-red-200 whitespace-nowrap">
+      <Badge className="bg-red-100 text-red-700 border border-red-200 whitespace-nowrap font-medium">
         Qolmadi
       </Badge>
     );
   if (quantity === 1)
     return (
-      <Badge className="bg-orange-100 text-orange-700 border-orange-200 whitespace-nowrap">
+      <Badge className="bg-orange-100 text-orange-700 border border-orange-200 whitespace-nowrap font-medium">
         1 ta qoldi
       </Badge>
     );
   return (
-    <Badge className="bg-green-100 text-green-700 border-green-200 whitespace-nowrap">
+    <Badge className="bg-green-100 text-green-700 border border-green-200 whitespace-nowrap font-medium">
       Mavjud
     </Badge>
   );
+}
+
+function SortIcon({
+  col,
+  sortKey,
+  sortDir,
+}: {
+  col: SortKey;
+  sortKey: SortKey | null;
+  sortDir: SortDir;
+}) {
+  if (sortKey !== col)
+    return (
+      <ChevronsUpDown className="h-3.5 w-3.5 text-slate-300 ml-1 inline" />
+    );
+  if (sortDir === "asc")
+    return <ChevronUp className="h-3.5 w-3.5 text-blue-500 ml-1 inline" />;
+  return <ChevronDown className="h-3.5 w-3.5 text-blue-500 ml-1 inline" />;
 }
 
 export default function ProductTable({
   products,
   onUpdate,
 }: ProductTableProps) {
-  // Edit qty state
+  // Sort state
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>(null);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+
+  // Search filter inside table
+  const [tableSearch, setTableSearch] = useState("");
+
+  // Edit state
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [newQty, setNewQty] = useState("");
   const [saving, setSaving] = useState(false);
@@ -64,12 +107,53 @@ export default function ProductTable({
   const [sellError, setSellError] = useState("");
   const [sellSuccess, setSellSuccess] = useState("");
 
+  function handleSort(key: SortKey) {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir("asc");
+    } else if (sortDir === "asc") setSortDir("desc");
+    else if (sortDir === "desc") {
+      setSortKey(null);
+      setSortDir(null);
+    }
+    setPage(1);
+  }
+
+  const filtered = useMemo(() => {
+    const q = tableSearch.toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) =>
+        p.productCode.toLowerCase().includes(q) ||
+        p.productName.toLowerCase().includes(q) ||
+        (p.location || "").toLowerCase().includes(q),
+    );
+  }, [products, tableSearch]);
+
+  const sorted = useMemo(() => {
+    if (!sortKey || !sortDir) return filtered;
+    return [...filtered].sort((a, b) => {
+      let av: string | number = a[sortKey] ?? "";
+      let bv: string | number = b[sortKey] ?? "";
+      if (sortKey === "quantity") {
+        return sortDir === "asc"
+          ? (av as number) - (bv as number)
+          : (bv as number) - (av as number);
+      }
+      av = (av as string).toLowerCase();
+      bv = (bv as string).toLowerCase();
+      return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+  }, [filtered, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paginated = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   function openEdit(p: Product) {
     setEditProduct(p);
     setNewQty(String(p.quantity));
     setEditError("");
   }
-
   function openSell(p: Product) {
     setSellProduct(p);
     setSellQty(1);
@@ -132,139 +216,257 @@ export default function ProductTable({
 
   if (products.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 text-center text-slate-400">
-        Mahsulotlar yo'q
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-10 text-center">
+        <p className="text-slate-400 text-base">Mahsulotlar yo'q</p>
       </div>
     );
   }
 
   return (
     <>
-      {/* Mobile cards */}
-      <div className="space-y-3 md:hidden">
-        {products.map((p) => (
-          <div
-            key={p._id}
-            className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-slate-400 font-mono">
-                  {p.productCode}
-                </p>
-                <p className="font-semibold text-slate-800 truncate">
-                  {p.productName}
-                </p>
-                {p.location && (
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    📍 {p.location}
-                  </p>
-                )}
-                <div className="flex items-center gap-2 mt-2">
-                  <StatusBadge quantity={p.quantity} />
-                  <span className="text-slate-500 text-sm font-medium">
-                    {p.quantity} dona
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 flex-shrink-0">
-                <Button
-                  size="sm"
-                  className="rounded-xl bg-green-600 hover:bg-green-700 text-white h-9 px-3 gap-1"
-                  onClick={() => openSell(p)}
-                  disabled={p.quantity === 0}
-                >
-                  <ShoppingCart className="h-3.5 w-3.5" /> Sotish
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="rounded-xl h-9 px-3 gap-1"
-                  onClick={() => openEdit(p)}
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Tahrir
-                </Button>
-              </div>
-            </div>
-          </div>
-        ))}
+      {/* Table filter + stats row */}
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-3">
+        <Input
+          value={tableSearch}
+          onChange={(e) => {
+            setTableSearch(e.target.value);
+            setPage(1);
+          }}
+          placeholder="🔍 Jadvalda qidirish..."
+          className="h-10 rounded-xl text-sm border-slate-200 flex-1"
+        />
+        <div className="text-sm text-slate-400 whitespace-nowrap">
+          Jami:{" "}
+          <span className="font-semibold text-slate-600">
+            {filtered.length}
+          </span>{" "}
+          ta mahsulot
+        </div>
       </div>
 
-      {/* Desktop table */}
+      {/* ── MOBILE CARDS ── */}
+      <div className="space-y-3 md:hidden">
+        {paginated.length === 0 ? (
+          <div className="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">
+            Hech narsa topilmadi
+          </div>
+        ) : (
+          paginated.map((p) => (
+            <div
+              key={p._id}
+              className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-slate-400 font-mono font-semibold">
+                    {p.productCode}
+                  </p>
+                  <p className="font-bold text-slate-800 text-base mt-0.5 leading-tight">
+                    {p.productName}
+                  </p>
+                  {p.location && (
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      📍 {p.location}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2 mt-2">
+                    <StatusBadge quantity={p.quantity} />
+                    <span className="text-slate-600 text-sm font-semibold">
+                      {p.quantity} dona
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 flex-shrink-0">
+                  <Button
+                    size="sm"
+                    className="rounded-xl bg-green-600 hover:bg-green-700 text-white h-9 px-3 gap-1 text-sm"
+                    onClick={() => openSell(p)}
+                    disabled={p.quantity === 0}
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5" /> Sotish
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl h-9 px-3 gap-1 text-sm"
+                    onClick={() => openEdit(p)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Tahrir
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* ── DESKTOP TABLE ── */}
       <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-slate-600">
-                  Kod
-                </th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-slate-600">
-                  Nomi
-                </th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-slate-600">
-                  Miqdor
-                </th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-slate-600">
+                {/* Sortable columns */}
+                {(
+                  [
+                    { key: "productCode", label: "Kod" },
+                    { key: "productName", label: "Nomi" },
+                    { key: "quantity", label: "Miqdor" },
+                  ] as { key: SortKey; label: string }[]
+                ).map(({ key, label }) => (
+                  <th
+                    key={key}
+                    className="text-left px-4 py-3.5 font-semibold text-slate-600 cursor-pointer select-none hover:text-blue-600 hover:bg-slate-100 transition-colors"
+                    onClick={() => handleSort(key)}
+                  >
+                    {label}
+                    <SortIcon col={key} sortKey={sortKey} sortDir={sortDir} />
+                  </th>
+                ))}
+                <th className="text-left px-4 py-3.5 font-semibold text-slate-600">
                   Holat
                 </th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-slate-600">
+                <th className="text-left px-4 py-3.5 font-semibold text-slate-600">
                   Joylashuv
                 </th>
-                <th className="text-right px-4 py-3 text-sm font-semibold text-slate-600">
+                <th className="text-right px-4 py-3.5 font-semibold text-slate-600">
                   Amallar
                 </th>
               </tr>
             </thead>
-            <tbody>
-              {products.map((p, i) => (
-                <tr
-                  key={p._id}
-                  className={`border-b border-slate-50 ${i % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}
-                >
-                  <td className="px-4 py-3 font-mono text-sm text-slate-600">
-                    {p.productCode}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-slate-800">
-                    {p.productName}
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-slate-700">
-                    {p.quantity}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge quantity={p.quantity} />
-                  </td>
-                  <td className="px-4 py-3 text-slate-500 text-sm">
-                    {p.location || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex gap-2 justify-end">
-                      <Button
-                        size="sm"
-                        className="rounded-lg bg-green-600 hover:bg-green-700 text-white"
-                        onClick={() => openSell(p)}
-                        disabled={p.quantity === 0}
-                      >
-                        <ShoppingCart className="h-3.5 w-3.5 mr-1" /> Sotish
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-lg"
-                        onClick={() => openEdit(p)}
-                      >
-                        <Pencil className="h-3.5 w-3.5 mr-1" /> Tahrirlash
-                      </Button>
-                    </div>
+            <tbody className="divide-y divide-slate-50">
+              {paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-10 text-slate-400">
+                    Hech narsa topilmadi
                   </td>
                 </tr>
-              ))}
+              ) : (
+                paginated.map((p, i) => (
+                  <tr
+                    key={p._id}
+                    className={`transition-colors hover:bg-blue-50/40 ${i % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}
+                  >
+                    <td className="px-4 py-3.5 font-mono font-semibold text-slate-600 text-xs">
+                      {p.productCode}
+                    </td>
+                    <td className="px-4 py-3.5 font-medium text-slate-800">
+                      {p.productName}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span
+                        className={`font-bold text-base ${p.quantity === 0 ? "text-red-500" : p.quantity === 1 ? "text-orange-500" : "text-slate-800"}`}
+                      >
+                        {p.quantity}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <StatusBadge quantity={p.quantity} />
+                    </td>
+                    <td className="px-4 py-3.5 text-slate-400 text-xs">
+                      {p.location || "—"}
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <div className="flex gap-2 justify-end">
+                        <Button
+                          size="sm"
+                          className="rounded-lg bg-green-600 hover:bg-green-700 text-white h-8 px-3 gap-1"
+                          onClick={() => openSell(p)}
+                          disabled={p.quantity === 0}
+                        >
+                          <ShoppingCart className="h-3.5 w-3.5" /> Sotish
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-lg h-8 px-3 gap-1"
+                          onClick={() => openEdit(p)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Tahrirlash
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Table footer: total row count */}
+        {sorted.length > 0 && (
+          <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50 text-xs text-slate-400 flex justify-between">
+            <span>
+              Ko'rsatilmoqda: {(page - 1) * PAGE_SIZE + 1}–
+              {Math.min(page * PAGE_SIZE, sorted.length)} / {sorted.length} ta
+            </span>
+            <span>
+              {sortKey
+                ? `${sortKey === "productCode" ? "Kod" : sortKey === "productName" ? "Nom" : "Miqdor"} bo'yicha saralandi (${sortDir === "asc" ? "↑" : "↓"})`
+                : "Saralanmagan"}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Edit Qty Dialog */}
+      {/* ── PAGINATION ── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-xl h-10 px-4 gap-1"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+          >
+            <ChevronLeft className="h-4 w-4" /> Oldingi
+          </Button>
+
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(
+                (p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1,
+              )
+              .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                if (idx > 0 && p - (arr[idx - 1] as number) > 1)
+                  acc.push("...");
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((p, idx) =>
+                p === "..." ? (
+                  <span key={`dot-${idx}`} className="px-1 text-slate-400">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p as number)}
+                    className={`h-9 w-9 rounded-xl text-sm font-semibold transition-all ${
+                      page === p
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ),
+              )}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-xl h-10 px-4 gap-1"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+          >
+            Keyingi <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* ── EDIT QTY DIALOG ── */}
       <Dialog
         open={!!editProduct}
         onOpenChange={(o) => !o && setEditProduct(null)}
@@ -275,11 +477,11 @@ export default function ProductTable({
           </DialogHeader>
           {editProduct && (
             <div className="space-y-4 mt-2">
-              <div>
+              <div className="bg-slate-50 rounded-xl p-3">
                 <p className="text-xs text-slate-400 font-mono">
                   {editProduct.productCode}
                 </p>
-                <p className="font-semibold text-slate-800">
+                <p className="font-bold text-slate-800">
                   {editProduct.productName}
                 </p>
               </div>
@@ -290,7 +492,7 @@ export default function ProductTable({
                   min="0"
                   value={newQty}
                   onChange={(e) => setNewQty(e.target.value)}
-                  className="h-14 text-xl text-center rounded-xl font-bold"
+                  className="h-14 text-2xl text-center rounded-xl font-bold"
                   inputMode="numeric"
                 />
               </div>
@@ -316,7 +518,7 @@ export default function ProductTable({
         </DialogContent>
       </Dialog>
 
-      {/* Sell Dialog */}
+      {/* ── SELL DIALOG ── */}
       <Dialog
         open={!!sellProduct}
         onOpenChange={(o) => !o && setSellProduct(null)}
@@ -343,7 +545,6 @@ export default function ProductTable({
                   </span>
                 </p>
               </div>
-
               <div className="space-y-2">
                 <Label className="text-base">Sotilgan miqdor (dona)</Label>
                 <div className="flex items-center gap-3">
@@ -390,7 +591,6 @@ export default function ProductTable({
                   </Button>
                 </div>
               </div>
-
               <div className="space-y-1">
                 <Label>Izoh (ixtiyoriy)</Label>
                 <Input
@@ -400,7 +600,6 @@ export default function ProductTable({
                   onChange={(e) => setSellNote(e.target.value)}
                 />
               </div>
-
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-800">
                 <div className="flex justify-between">
                   <span>Sotiladi:</span>
@@ -413,7 +612,6 @@ export default function ProductTable({
                   </span>
                 </div>
               </div>
-
               {sellError && (
                 <p className="text-red-600 text-sm bg-red-50 p-3 rounded-xl">
                   ❌ {sellError}
@@ -424,7 +622,6 @@ export default function ProductTable({
                   {sellSuccess}
                 </p>
               )}
-
               <div className="flex gap-3">
                 <Button
                   variant="outline"

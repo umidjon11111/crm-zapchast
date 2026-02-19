@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import SearchBar from "@/components/SearchBar";
 import ProductTable from "@/components/ProductTable";
 import {
@@ -63,8 +63,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [searchedProduct, setSearchedProduct] = useState<Product | null>(null);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
-  const [loadingAll, setLoadingAll] = useState(false);
-  const [showAll, setShowAll] = useState(false);
+  const [loadingAll, setLoadingAll] = useState(true); // true = auto-load on mount
 
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState({
@@ -83,23 +82,25 @@ export default function DashboardPage() {
   const [deleteError, setDeleteError] = useState("");
   const [deleteSuccess, setDeleteSuccess] = useState("");
 
+  // ── AUTO LOAD on mount ──
+  const loadAllProducts = useCallback(async () => {
+    setLoadingAll(true);
+    try {
+      const res = await fetch("/api/products");
+      if (res.ok) setAllProducts(await res.json());
+    } finally {
+      setLoadingAll(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAllProducts();
+  }, [loadAllProducts]);
+
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/");
     router.refresh();
-  }
-
-  async function loadAllProducts() {
-    setLoadingAll(true);
-    try {
-      const res = await fetch("/api/products");
-      if (res.ok) {
-        setAllProducts(await res.json());
-        setShowAll(true);
-      }
-    } finally {
-      setLoadingAll(false);
-    }
   }
 
   async function handleAddProduct(e: React.FormEvent) {
@@ -123,7 +124,7 @@ export default function DashboardPage() {
           quantity: "",
           location: "",
         });
-        if (showAll) loadAllProducts();
+        loadAllProducts();
       } else {
         const err = await res.json();
         setAddError(err.error || "Xatolik yuz berdi");
@@ -179,15 +180,15 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
+      {/* ── HEADER ── */}
       <header className="bg-blue-600 text-white px-4 py-4 shadow-md sticky top-0 z-10">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Package className="h-6 w-6" />
             <span className="font-bold text-lg">Zapchast Ombori</span>
           </div>
-          <div className="flex gap-1.5">
-            {/* Statistics */}
+          <div className="flex gap-1.5 items-center">
+            {/* Statistika */}
             <Button
               size="sm"
               variant="ghost"
@@ -196,6 +197,19 @@ export default function DashboardPage() {
             >
               <BarChart2 className="h-4 w-4" />
               <span className="hidden sm:inline text-sm">Statistika</span>
+            </Button>
+
+            {/* Refresh */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-white hover:bg-blue-700 rounded-xl"
+              onClick={loadAllProducts}
+              disabled={loadingAll}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${loadingAll ? "animate-spin" : ""}`}
+              />
             </Button>
 
             {/* Add */}
@@ -283,7 +297,6 @@ export default function DashboardPage() {
               open={deleteOpen}
               onOpenChange={(open) => {
                 setDeleteOpen(open);
-                if (open && allProducts.length === 0) loadAllProducts();
                 if (!open) {
                   setDeleteCode("");
                   setDeleteSearchQuery("");
@@ -324,12 +337,7 @@ export default function DashboardPage() {
                         <SelectValue placeholder="Mahsulot tanlang..." />
                       </SelectTrigger>
                       <SelectContent className="max-h-64">
-                        {loadingAll && (
-                          <div className="px-3 py-4 text-center text-slate-400 text-sm">
-                            Yuklanmoqda...
-                          </div>
-                        )}
-                        {!loadingAll && filteredDeleteProducts.length === 0 && (
+                        {filteredDeleteProducts.length === 0 && (
                           <div className="px-3 py-4 text-center text-slate-400 text-sm">
                             Mahsulot topilmadi
                           </div>
@@ -423,9 +431,11 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-4xl mx-auto px-4 py-5 space-y-5">
+        {/* Search */}
         <SearchBar onProductFound={setSearchedProduct} />
 
+        {/* Search Result Card */}
         {searchedProduct && (
           <div className="bg-white rounded-2xl shadow-md p-5 border border-slate-100">
             <div className="flex items-start justify-between gap-4">
@@ -453,10 +463,10 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Statistics shortcut banner */}
+        {/* Statistics banner */}
         <button
           onClick={() => router.push("/dashboard/statistics")}
-          className="w-full bg-gradient-to-r from-blue-600 to-blue-500 rounded-2xl p-4 text-white flex items-center justify-between shadow-md hover:shadow-lg transition-all"
+          className="w-full bg-gradient-to-r from-blue-600 to-blue-500 rounded-2xl p-4 text-white flex items-center justify-between shadow-md hover:shadow-lg transition-all active:scale-[0.99]"
         >
           <div className="flex items-center gap-3">
             <div className="bg-white/20 p-2 rounded-xl">
@@ -469,29 +479,43 @@ export default function DashboardPage() {
               </p>
             </div>
           </div>
-          <span className="text-blue-200 text-xl">→</span>
+          <span className="text-blue-200 text-2xl font-light">›</span>
         </button>
 
+        {/* Products table section */}
         <div>
-          <Button
-            onClick={loadAllProducts}
-            disabled={loadingAll}
-            variant="outline"
-            className="w-full h-12 text-base rounded-xl border-slate-200 mb-4"
-          >
-            {loadingAll ? (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />{" "}
-                Yuklanmoqda...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2" /> Barcha mahsulotlar
-              </>
-            )}
-          </Button>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-bold text-slate-700 text-base flex items-center gap-2">
+              <Package className="h-4 w-4 text-blue-500" />
+              Barcha mahsulotlar
+              {allProducts.length > 0 && (
+                <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-0.5 rounded-full">
+                  {allProducts.length}
+                </span>
+              )}
+            </h2>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-xl h-9 px-3 gap-1.5 text-sm"
+              onClick={loadAllProducts}
+              disabled={loadingAll}
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${loadingAll ? "animate-spin" : ""}`}
+              />
+              Yangilash
+            </Button>
+          </div>
 
-          {showAll && (
+          {loadingAll ? (
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 text-center">
+              <RefreshCw className="h-8 w-8 animate-spin text-blue-400 mx-auto mb-3" />
+              <p className="text-slate-400 text-sm">
+                Mahsulotlar yuklanmoqda...
+              </p>
+            </div>
+          ) : (
             <ProductTable products={allProducts} onUpdate={loadAllProducts} />
           )}
         </div>
